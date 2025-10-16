@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: Pakasir for Easy Digital Download
+ * Plugin Name: Pakasir for Easy Digital Downloads
  * Plugin URI:  https://pakasir.com/
  * Description: Pakasir Payment Gateway (QRIS, Virtual Account, etc) for EDD. (compatible with Indonesia banks/e-wallets only)
  * Version:     1.0.0
@@ -48,7 +48,7 @@ function pakasir_edd_process_gateway( $purchase_data ) {
 		// Create a pending payment in EDD
 		$payment_data = array(
 			'price'        => $price,
-			'date'         => date( 'Y-m-d H:i:s' ), // gunakan waktu sekarang
+			'date'         => gmdate( 'Y-m-d H:i:s' ), // gunakan waktu sekarang
 			'user_email'   => $user_email,
 			'purchase_key' => $purchase_key,
 			'currency'     => edd_get_currency(),
@@ -62,7 +62,7 @@ function pakasir_edd_process_gateway( $purchase_data ) {
 		$payment_id = edd_insert_payment( $payment_data );
 
 		if ( ! $payment_id ) {
-			edd_set_error( 'pakasir_payment_error', __( 'Gagal membuat pembayaran. Coba ulang.', 'pakasir-edd' ) );
+			edd_set_error( 'pakasir_payment_error', 'Gagal membuat pembayaran. Coba ulang.' );
 			edd_send_back_to_checkout();
 			return;
 		}
@@ -76,11 +76,16 @@ function pakasir_edd_process_gateway( $purchase_data ) {
 		$amount   = rawurlencode( $price * $rate );
 		$order_id = rawurlencode( $payment_id );
 
+		// Get EDD confirmation URL
+		$success_page = edd_get_success_page_uri();
+		$redirect_url_final = add_query_arg( 'payment_id', $payment_id, $success_page );
+
 		$redirect_url = sprintf(
-			'https://app.pakasir.com/pay/%s/%s?order_id=%s',
+			'https://app.pakasir.com/pay/%s/%s?order_id=%s&redirect=%s',
 			$slug,
 			$amount,
-			$order_id
+			$order_id,
+			rawurlencode( $redirect_url_final ),
 		);
 
 		wp_redirect( $redirect_url );
@@ -125,7 +130,7 @@ function pakasir_edd_add_settings( $settings ) {
 			'id'   => 'pakasir_api_key',
 			'name' => 'Pakasir API Key',
 			'desc' => 'Masukkan API Key untuk verifikasi transaksi.',
-			'type' => 'text',
+			'type' => 'password',
 			'std'  => ''
 		),
 		array(
@@ -158,7 +163,7 @@ add_filter( 'edd_settings_extensions', 'pakasir_edd_add_settings' );
 function pakasir_edd_listener() {
 	if ( isset( $_GET['edd-listener'] ) && $_GET['edd-listener'] === 'pakasir' ) {
 		// Allow only POST
-		$method = $_SERVER['REQUEST_METHOD'];
+		$method = isset($_SERVER['REQUEST_METHOD']) ? wp_unslash(sanitize_text_field($_SERVER['REQUEST_METHOD'])) : '';
 		if ( $method !== 'POST' ) {
 			status_header( 405 );
 			echo 'Method Not Allowed';
@@ -278,7 +283,7 @@ function pakasir_edd_payment_meta_box( $payment_id ) {
 	$meta = edd_get_payment_meta( $payment_id );
 	if ( isset( $meta['pakasir_transaction'] ) ) {
 		echo '<p><strong>Pakasir transaction:</strong></p>';
-		echo '<pre style="white-space:pre-wrap;">' . esc_html( print_r( $meta['pakasir_transaction'], true ) ) . '</pre>';
+		echo '<pre style="white-space:pre-wrap;">' . esc_html( json_encode($meta['pakasir_transaction']) ) . '</pre>';
 	}
 }
 add_action( 'edd_payment_inside_details', 'pakasir_edd_payment_meta_box' );
@@ -291,7 +296,7 @@ add_filter( 'edd_pakasir_cc_form', '__return_false' );
 
 // Tambahkan Rupiah ke daftar mata uang EDD
 add_filter( 'edd_currencies', function( $currencies ) {
-    $currencies['IDR'] = __( 'Indonesian Rupiah (Rp)', 'edd' );
+    $currencies['IDR'] = 'Indonesian Rupiah (Rp)';
     return $currencies;
 } );
 
